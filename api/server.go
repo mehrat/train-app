@@ -23,7 +23,10 @@ func main() {
 	m.Post("/station/add", binding.Bind(models.Station{}), sc.PostStation)
 
 	m.Get("/train/:Number/schedule", tc.GetTrainSchedule)
-	m.Get("/trains", tc.GetTrains)
+	m.Post("/trains", binding.Bind(models.StationSearch{}), tc.GetTrains)
+	m.Post("/timeAt", binding.Bind(models.StationTrainTime{}), tc.GetTrainReachTime)
+	m.Get("/:from/:to/isWeekendTrip", tc.IsWeekendTrip)
+
 
 	m.Run()
 }
