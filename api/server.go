@@ -17,12 +17,13 @@ func main() {
 	tc := controllers.NewTrainController(models.Database())
 	sc := controllers.NewStationController(models.Database())
 
-	m.Get("/train", binding.Bind(models.Train{}), tc.GetAllTrains)
-	m.Get("/station", binding.Bind(models.Station{}), sc.GetAllStations)
+	m.Get("/trains/all", binding.Bind(models.Train{}), tc.GetAllTrains)
+	m.Get("/stations/all", binding.Bind(models.Station{}), sc.GetAllStations)
 	m.Post("/train/add", binding.Bind(models.Train{}), tc.PostTrain)
 	m.Post("/station/add", binding.Bind(models.Station{}), sc.PostStation)
 
 	m.Get("/train/:Number/schedule", tc.GetTrainSchedule)
+	m.Get("/trains", tc.GetTrains)
 
 	m.Run()
 }
