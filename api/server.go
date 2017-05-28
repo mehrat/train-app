@@ -26,7 +26,7 @@ func main() {
 	m.Post("/trains", binding.Bind(models.StationSearch{}), tc.GetTrains)
 	m.Post("/timeAt", binding.Bind(models.StationTrainTime{}), tc.GetTrainReachTime)
 	m.Get("/:from/:to/isWeekendTrip", tc.IsWeekendTrip)
-
+	m.Post("/suggest", binding.Bind(models.BestSchedule{}), tc.SuggestTrains)
 
 	m.Run()
 }

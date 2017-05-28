@@ -7,6 +7,7 @@ import (
 	"labix.org/v2/mgo"
 	"labix.org/v2/mgo/bson"
 	"os"
+	"sort"
 )
 
 type (
@@ -47,11 +48,11 @@ func (tc *TrainController) GetTrains(r render.Render, params martini.Params, t m
 	trains := []models.Train{}
 	session := tc.session.DB(os.Getenv("DB_NAME")).C("train")
 	err := session.Find(nil).Limit(100).All(&trains)
-	tranArr := make(map[string]int64)
+	tranArr := make(map[string]int)
 	for _, train := range trains {
 		var found bool = false
-		var t1 int64
-		var t2 int64
+		var t1 int
+		var t2 int
 
 		for stn, tim := range train.Schedule {
 			if !found && stn == t.From {
@@ -81,7 +82,7 @@ func (tc *TrainController) GetTrainReachTime(r render.Render, params martini.Par
 	if err != nil {
 		panic(err)
 	}
-	var arrivalTime int64 = -1
+	var arrivalTime int = -1
 
 	for stn, tim := range result.Schedule {
 		if stn == st.Station {
@@ -109,8 +110,8 @@ func (tc *TrainController) IsWeekendTrip(r render.Render, params martini.Params)
 	var to string = params["to"]
 	for _, train := range trains {
 		var found bool = false
-		var t1 int64
-		var t2 int64
+		var t1 int
+		var t2 int
 
 		for stn, tim := range train.Schedule {
 			if !found && stn == from {
@@ -133,6 +134,77 @@ func (tc *TrainController) IsWeekendTrip(r render.Render, params martini.Params)
 	r.JSON(200, isWeekendtrip)
 }
 
+func (tc *TrainController) SuggestTrains(r render.Render, params martini.Params, bs models.BestSchedule) {
+	trains := []models.Train{}
+	session := tc.session.DB(os.Getenv("DB_NAME")).C("train")
+	err := session.Find(nil).Limit(100).All(&trains)
+	trainDep := make(map[string]int)
+	trainArr := make(map[string]int)
+	diffMap := make(map[string]int)
+
+	for _, train := range trains {
+		var found bool = false
+		var t1 int
+		var t2 int
+
+		for stn, tim := range train.Schedule {
+			if !found && stn == bs.From {
+				found = true
+				t1 = tim
+			}
+			if found && stn == bs.To {
+				t2 = tim
+			}
+		}
+		if found {
+			trainDep[train.Name] = t1
+			trainArr[train.Name] = t2
+			diffMap[train.Name] = bs.TentativeArrival / 100 - t2
+
+		}
+	}
+
+	result := []models.TrainDepArr{}
+	groupedMap := make(map[int][]string)
+
+	//Group trainNames by diffArrivalTime
+	for trainName, diffArrivalTime := range diffMap {
+		trainList, ok := groupedMap[absVal(diffArrivalTime)]
+		if ok {
+			trainList = append(trainList, trainName)
+		} else {
+			var trainList []string
+			trainList = append(trainList, trainName)
+			groupedMap[absVal(diffArrivalTime)] = trainList
+		}
+	}
+
+	var keys []int
+	for k := range groupedMap {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+
+	for _, key := range keys {
+		durationMap := make(map[string]int)
+		for _, trainName := range groupedMap[key] {
+			durationMap[trainName] = trainArr[trainName] - trainDep[trainName]
+		}
+		durationPairList := models.PairList{}
+		durationPairList = getSortedMap(durationMap)
+		for _, pair := range durationPairList {
+			var trainName string = pair.Key
+			trainobj := models.TrainDepArr{trainName, trainDep[trainName], trainArr[trainName] }
+			result = append(result, trainobj)
+		}
+	}
+
+	if err != nil {
+		panic(err)
+	}
+	r.JSON(200, result)
+}
+
 func (tc *TrainController) PostTrain(train models.Train, r render.Render) {
 	session := tc.session.DB(os.Getenv("DB_NAME")).C("train")
 
@@ -143,5 +215,24 @@ func (tc *TrainController) PostTrain(train models.Train, r render.Render) {
 	session.Insert(train)
 
 	r.JSON(201, train)
+}
+
+func getSortedMap(originalMap map[string]int) models.PairList {
+	sortedMap := make(models.PairList, len(originalMap))
+	i := 0
+	for k, v := range originalMap {
+		sortedMap[i] = models.Pair{k, v}
+		i++
+	}
+	sort.Sort(sortedMap)
+	return sortedMap
+}
+
+func absVal(integ int) int{
+	 if (integ < 0) {
+		 return (integ * -1)
+	 } else {
+		 return integ
+	 }
 }
 
