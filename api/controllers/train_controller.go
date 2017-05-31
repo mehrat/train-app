@@ -34,7 +34,7 @@ func (tc *TrainController) GetTrainSchedule(r render.Render, params martini.Para
 func (tc *TrainController) GetAllTrains(r render.Render) {
 	trains := []models.Train{}
 	session := tc.session.DB(os.Getenv("DB_NAME")).C("train")
-	err := session.Find(nil).Limit(100).All(&trains)
+	err := session.Find(nil).All(&trains)
 
 	if err != nil {
 		panic(err)
@@ -47,25 +47,32 @@ func (tc *TrainController) GetTrains(r render.Render, params martini.Params, t m
 
 	trains := []models.Train{}
 	session := tc.session.DB(os.Getenv("DB_NAME")).C("train")
-	err := session.Find(nil).Limit(100).All(&trains)
-	tranArr := make(map[string]int)
+	err := session.Find(nil).All(&trains)
+	tranArr := make(map[string]float64)
 	for _, train := range trains {
 		var found bool = false
-		var t1 int
-		var t2 int
+		var t1 int = -1
+		var t2 int = -1
 
 		for stn, tim := range train.Schedule {
 			if !found && stn == t.From {
 				found = true
 				t1 = tim
+				for stn1, tim1 := range train.Schedule {
+					if found && stn1 == t.To {
+						t2 = tim1
+						break
+					}
+				}
+				break
 			}
-			if found && stn == t.To {
-				t2 = tim
-			}
+		}
+		if t2 == -1 {
+			found = false
 		}
 		if found {
 			duration := t2 - t1
-			tranArr[train.Name] = duration / 100
+			tranArr[train.Name] = float64(duration) / 100
 		}
 	}
 	if err != nil {
@@ -100,7 +107,7 @@ func (tc *TrainController) GetTrainReachTime(r render.Render, params martini.Par
 func (tc *TrainController) IsWeekendTrip(r render.Render, params martini.Params) {
 	trains := []models.Train{}
 	session := tc.session.DB(os.Getenv("DB_NAME")).C("train")
-	err := session.Find(nil).Limit(100).All(&trains)
+	err := session.Find(nil).All(&trains)
 
 	if err != nil {
 		panic(err)
@@ -110,21 +117,29 @@ func (tc *TrainController) IsWeekendTrip(r render.Render, params martini.Params)
 	var to string = params["to"]
 	for _, train := range trains {
 		var found bool = false
-		var t1 int
-		var t2 int
+		var t1 int = -1
+		var t2 int = -1
 
 		for stn, tim := range train.Schedule {
 			if !found && stn == from {
 				found = true
 				t1 = tim
+
+				for stn1, tim1 := range train.Schedule {
+					if found && stn1 == to {
+						t2 = tim1
+						break
+					}
+				}
+				break
 			}
-			if found && stn == to {
-				t2 = tim
-			}
+		}
+		if t2 == -1 {
+			found = false
 		}
 		if found {
 			duration := t2 - t1
-			if (duration / 100) <= 180 {
+			if duration <= 180 {
 				isWeekendtrip = "Yes"
 				break
 			}
@@ -137,30 +152,35 @@ func (tc *TrainController) IsWeekendTrip(r render.Render, params martini.Params)
 func (tc *TrainController) SuggestTrains(r render.Render, params martini.Params, bs models.BestSchedule) {
 	trains := []models.Train{}
 	session := tc.session.DB(os.Getenv("DB_NAME")).C("train")
-	err := session.Find(nil).Limit(100).All(&trains)
+	err := session.Find(nil).All(&trains)
 	trainDep := make(map[string]int)
 	trainArr := make(map[string]int)
 	diffMap := make(map[string]int)
 
 	for _, train := range trains {
 		var found bool = false
-		var t1 int
-		var t2 int
-
+		var t1 int = -1
+		var t2 int = -1
 		for stn, tim := range train.Schedule {
 			if !found && stn == bs.From {
 				found = true
 				t1 = tim
+				for stn1, tim1 := range train.Schedule {
+					if found && stn1 == bs.To {
+						t2 = tim1
+						break
+					}
+				}
+				break
 			}
-			if found && stn == bs.To {
-				t2 = tim
-			}
+		}
+		if t2 == -1 {
+			found = false
 		}
 		if found {
 			trainDep[train.Name] = t1
 			trainArr[train.Name] = t2
-			diffMap[train.Name] = bs.TentativeArrival / 100 - t2
-
+			diffMap[train.Name] = bs.TentativeArrival - t2
 		}
 	}
 
@@ -172,9 +192,9 @@ func (tc *TrainController) SuggestTrains(r render.Render, params martini.Params,
 		trainList, ok := groupedMap[absVal(diffArrivalTime)]
 		if ok {
 			trainList = append(trainList, trainName)
+			groupedMap[absVal(diffArrivalTime)] = trainList
 		} else {
-			var trainList []string
-			trainList = append(trainList, trainName)
+			trainList := []string{trainName}
 			groupedMap[absVal(diffArrivalTime)] = trainList
 		}
 	}
@@ -192,6 +212,7 @@ func (tc *TrainController) SuggestTrains(r render.Render, params martini.Params,
 		}
 		durationPairList := models.PairList{}
 		durationPairList = getSortedMap(durationMap)
+
 		for _, pair := range durationPairList {
 			var trainName string = pair.Key
 			trainobj := models.TrainDepArr{trainName, trainDep[trainName], trainArr[trainName] }
@@ -228,11 +249,11 @@ func getSortedMap(originalMap map[string]int) models.PairList {
 	return sortedMap
 }
 
-func absVal(integ int) int{
-	 if (integ < 0) {
-		 return (integ * -1)
-	 } else {
-		 return integ
-	 }
+func absVal(integ int) int {
+	if (integ < 0) {
+		return (integ * -1)
+	} else {
+		return integ
+	}
 }
 
